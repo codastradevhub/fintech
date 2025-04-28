@@ -112,7 +112,8 @@ def get_option_details():
         
         # Get instrument details
         quote = kite.quote(f"NFO:{trading_symbol}")
-        
+        logger.info(f"Quote: {quote}")
+        logger.info(f"Trading symbol: {trading_symbol}")
         return jsonify({
             'status': 'success',
             'data': quote
@@ -120,6 +121,110 @@ def get_option_details():
         
     except Exception as e:
         logger.error(f"Error in get_option_details: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@fno_trading_bp.route('/fno/trade_multiple_options', methods=['POST'])
+def trade_multiple_options():
+    try:
+        data = request.get_json()
+        trades = data.get('trades', [])
+        
+        if not trades or not isinstance(trades, list):
+            return jsonify({
+                'status': 'error',
+                'message': 'Missing or invalid trades array in request body'
+            }), 400
+
+        kite = get_kite_instance()
+        results = []
+
+        for trade in trades:
+            # Required parameters for each trade
+            symbol = trade.get('symbol')
+            strike_price = trade.get('strike_price')
+            expiry = trade.get('expiry')
+            quantity = trade.get('quantity', 1)
+            transaction_type = trade.get('transaction_type', 'BUY')  # BUY or SELL
+            option_type = trade.get('option_type', 'CE')  # CE or PE
+            
+            if not all([symbol, strike_price, expiry]):
+                results.append({
+                    'status': 'error',
+                    'message': f'Missing required parameters for trade: {trade}',
+                    'trade': trade
+                })
+                continue
+
+            # Validate transaction type
+            if transaction_type not in ['BUY', 'SELL']:
+                results.append({
+                    'status': 'error',
+                    'message': f'Invalid transaction_type for trade: {trade}',
+                    'trade': trade
+                })
+                continue
+
+            # Validate option type
+            if option_type not in ['CE', 'PE']:
+                results.append({
+                    'status': 'error',
+                    'message': f'Invalid option_type for trade: {trade}',
+                    'trade': trade
+                })
+                continue
+
+            try:
+                # Construct the trading symbol
+                trading_symbol = f"{symbol}{expiry}{strike_price}{option_type}"
+                
+                # Map transaction type to Kite's constants
+                kite_transaction_type = (kite.TRANSACTION_TYPE_BUY 
+                                    if transaction_type == 'BUY' 
+                                    else kite.TRANSACTION_TYPE_SELL)
+                
+                # Place order
+                order = kite.place_order(
+                    variety=kite.VARIETY_REGULAR,
+                    exchange=kite.EXCHANGE_NFO,
+                    tradingsymbol=trading_symbol,
+                    transaction_type=kite_transaction_type,
+                    quantity=quantity,
+                    product=kite.PRODUCT_NRML,
+                    order_type=kite.ORDER_TYPE_MARKET
+                )
+                
+                results.append({
+                    'status': 'success',
+                    'message': f'{transaction_type} {option_type} option order placed successfully',
+                    'order_id': order,
+                    'details': {
+                        'symbol': symbol,
+                        'strike_price': strike_price,
+                        'expiry': expiry,
+                        'quantity': quantity,
+                        'transaction_type': transaction_type,
+                        'option_type': option_type,
+                        'trading_symbol': trading_symbol
+                    }
+                })
+                
+            except Exception as e:
+                results.append({
+                    'status': 'error',
+                    'message': str(e),
+                    'trade': trade
+                })
+        
+        return jsonify({
+            'status': 'success',
+            'results': results
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in trade_multiple_options: {str(e)}")
         return jsonify({
             'status': 'error',
             'message': str(e)
