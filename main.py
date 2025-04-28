@@ -3,6 +3,9 @@ import sys
 import json
 import datetime
 from flask import Flask, jsonify, request
+# from option_chain_api import option_chain_bp
+from fno_trading import fno_trading_bp
+
 
 try:
     from kiteconnect import KiteConnect
@@ -76,6 +79,10 @@ def get_stock_price():
     except Exception as e:
         print(f"[ERROR] {e}")
         return jsonify({"error": str(e)}), 500
+    
+# app.register_blueprint(option_chain_bp)
+app.register_blueprint(fno_trading_bp)
+
 
 if __name__ == '__main__':
     app.run(debug=True)
